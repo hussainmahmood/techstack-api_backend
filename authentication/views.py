@@ -1,0 +1,181 @@
+from django.shortcuts import render
+from functools import wraps
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.middleware import csrf
+from django.contrib.sessions.backends.db import SessionStore
+from main.exceptions import SessionAvailableError, SessionUnavailableError
+from django.contrib.auth.hashers import make_password, check_password
+from ninja import Router, Schema, ModelSchema
+from .models import User
+from rest_framework import viewsets, status
+from rest_framework.decorators import  api_view, action
+from rest_framework.response import Response
+from .serializers import (
+    UserSerializer,
+    LoginSerializer,
+    SessionSerializer,
+    
+)
+
+# Create your views here.
+
+@api_view(['GET'])
+def generate_csrf_token(request):
+    csrftoken = csrf.get_token(request)
+    return Response({"csrftoken": csrftoken})
+
+def set_session(request, response, user, remember_user=False):
+    session_id = request.session._get_or_create_session_key()
+    session_store = SessionStore(session_key=session_id)
+    session_store["user"] = user.user_id
+    session_store["username"] = user.username
+    session_store.save()
+
+    if remember_user:
+        expiry = 2592000
+    else:
+        expiry = 0
+
+    response.set_cookie(
+        "sessionid",
+        session_store.session_key,
+        httponly=True,
+        samesite="None",
+        secure=True,
+        max_age=expiry,
+    )
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+
+
+    @action(detail=False, methods=["post"])
+    def login(self, request):
+        remember_user = request.data.get("remember_user", False)
+        set_session(request, user, remember_user)
+        serializer = SessionSerializer(user)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["post"])
+    def logout(self, request):
+        request.session.flush()
+        return Response({"message": "logged out successfully"})
+
+
+router = Router()
+
+
+def ensure_logged_in(func):
+    @wraps(func)
+    def wrapper(request, *args, **kwargs):
+        if request.session.get("user") is not None:
+            return func(request, *args, **kwargs)
+
+        raise SessionUnavailableError()
+
+    return wrapper
+
+
+def ensure_not_logged_in(func):
+    @wraps(func)
+    def wrapper(request, *args, **kwargs):
+        if request.session.get("user") is None:
+            return func(request, *args, **kwargs)
+
+        raise SessionAvailableError()
+
+    return wrapper
+
+
+
+class UserIn(ModelSchema):
+    class Config:
+        model = User
+        model_exclude = [
+            "user_id",
+            "username",
+            "is_active",
+            "is_verified",
+            "created_at",
+            "updated_at",
+        ]
+        model_fields_optional = ["phone"]
+
+
+class UserOut(Schema):
+    id: int
+    username: str
+
+
+class Error(Schema):
+    field: str
+    message: str
+
+
+@router.post("/register", response={201: UserOut, 400: Error})
+@ensure_not_logged_in
+def register(request, response: HttpResponse, data: UserIn):
+    encrypted_password = make_password(data.dict().pop("password"))
+    data.dict()["password"] = encrypted_password
+    user = User.objects.filter(email=data.dict().pop("email"))
+    if user.exists():
+        return 400, {
+            "field": "email",
+            "message": "User with this email address already exists",
+        }
+    data.dict()["username"] = ""
+    user = User.objects.create(**data.dict())
+    set_session(request, response, user)
+    return 201, {"id": user.user_id, "username": user.username}
+
+
+@router.post("/login")
+def login(request):
+    print(request.COOKIES)
+    print(request.session.get("user"))
+    # Retrieve the session ID from somewhere (e.g., request parameters, database, etc.)
+    session_id = request.session._get_or_create_session_key()
+    print(session_id)
+
+    # Create a new session store
+    session_store = SessionStore(session_key=session_id)
+
+    session_store["user"] = 2
+    session_store.set_expiry(2592000)
+    session_store.save()
+
+    sessionid = session_store.session_key
+
+    # Set the session ID on the response object
+    response = JsonResponse({"message": "session id set"})
+
+    response.set_cookie(
+        "sessionid",
+        sessionid,
+        httponly=True,
+        samesite="None",
+        secure=True,
+        max_age=2592000,
+    )
+    return response
+
+
+@router.post("/get-session-id")
+def get_session_id(request):
+    print(request.COOKIES)
+    print(request.session.get("user"))
+    # Retrieve the session ID from somewhere (e.g., request parameters, database, etc.)
+    session_id = request.session._get_or_create_session_key()
+    print(session_id)
+
+    # Create a new session store
+    session_store = SessionStore(session_key=session_id)
+
+    # Set the session ID on the response object
+    response = JsonResponse({"message": session_store.session_key})
+
+    return response
