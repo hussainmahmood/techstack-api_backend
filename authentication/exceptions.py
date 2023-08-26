@@ -20,4 +20,9 @@ class FieldValidationError(BaseCustomException):
 class UserNotFoundException(BaseCustomException):
     def __init__(self):
         detail = "Incorrect email or password"
-        super().__init__(detail, status.HTTP_404_NOT_FOUND)
+        super().__init__(detail, status.HTTP_400_BAD_REQUEST)
+
+class UserAlreadyPresentException(BaseCustomException):
+    def __init__(self):
+        detail = "This email is already in use"
+        super().__init__(detail, status.HTTP_400_BAD_REQUEST)
