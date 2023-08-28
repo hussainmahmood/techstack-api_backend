@@ -16,11 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from authentication.views import generate_csrf_token
-from authentication.routers import router as auth_router
+from product_search.views import generate_csrf_token
+from product_search.routers import router as product_search_router
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/auth/get_csrf_token', generate_csrf_token),
-    path('api/', include(auth_router.urls)),
+    path('api/auth/get_csrf_token/', generate_csrf_token),
+    path('api/', include(product_search_router.urls)),
 ]
