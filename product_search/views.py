@@ -40,6 +40,8 @@ def set_session(request, user, remember_user=False):
 
 class AuthViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
+    serializer_class = LoginSerializer
+
     @action(detail=False, methods=["post"])
     def register(self, request):
         register_serializer = RegisterSerializer()
@@ -63,6 +65,7 @@ class AuthViewSet(viewsets.ModelViewSet):
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
+    serializer_class = UserSerializer
 
     @action(detail=False, methods=["get"])
     def currently_logged_in(self, request):
@@ -70,9 +73,11 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({"user": request.session.get('user'), "email": request.session.get('email')})
         
         return Response({"message": "session not found"}, status=status.HTTP_400_BAD_REQUEST)
-    
+
+
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
+    serializer_class = ProductSerializer
 
     @action(detail=False, methods=["get"])
     def search(self, request):
