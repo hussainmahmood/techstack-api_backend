@@ -6,13 +6,16 @@ EMAIL_REGEX = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
 
 # User Serializers
 
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = "__all__"
 
+
 class RegisterSerializer(serializers.ModelSerializer):
     confirm_password = serializers.CharField()
+
     class Meta:
         model = User
         fields = ['name', 'email', 'password']
@@ -45,8 +48,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
-
-
 class LoginSerializer(serializers.ModelSerializer):    
     class Meta:
         model = User
@@ -71,6 +72,7 @@ class LoginSerializer(serializers.ModelSerializer):
             raise UserNotFoundException()
 
         return user
+
 
 class SessionSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()

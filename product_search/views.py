@@ -4,7 +4,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from .models import User, Product
 from django.db.models import Q
 from rest_framework import viewsets, status
-from rest_framework.decorators import  api_view, action
+from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from .serializers import (
     UserSerializer,
@@ -16,10 +16,12 @@ from .data_generator import generate_random_products
 
 # Create your views here.
 
+
 @api_view(['GET'])
 def generate_csrf_token(request):
     csrftoken = csrf.get_token(request)
     return Response({"csrftoken": csrftoken})
+
 
 def set_session(request, user, remember_user=False):
     session_id = request.session._get_or_create_session_key()
@@ -27,16 +29,16 @@ def set_session(request, user, remember_user=False):
     session_store["user"] = user.user_id
     session_store["email"] = user.email
     session_store["marked_products"] = []
-    session_store.save()
 
+    expiry = 0
     if remember_user:
         expiry = 2592000
-    else:
-        expiry = 0
 
-    return session_store.session_key,
+    session_store.set_expiry(expiry)
+    session_store.save()
+
+    return session_store
         
-
 
 class AuthViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -46,16 +48,20 @@ class AuthViewSet(viewsets.ModelViewSet):
     def register(self, request):
         register_serializer = RegisterSerializer()
         user = register_serializer.validate(data=request.data)
-        session_id = set_session(request, user)
-        return Response({'sessionid': session_id})
+        session_store = set_session(request, user)
+        response = Response({'message': "logged in successfully"})
+        response.set_cookie('sessionid', session_store.session_key, session_store.get_expiry_age())
+        return response
     
     @action(detail=False, methods=["post"])
     def login(self, request):
         remember_user = request.data.get("remember_user", False)
         login_serializer = LoginSerializer()
         user = login_serializer.validate(data=request.data)
-        session_id = set_session(request, user, remember_user)
-        return Response({'sessionid': session_id})
+        session_store = set_session(request, user, remember_user)
+        response = Response({'message': "logged in successfully"})
+        response.set_cookie('sessionid', session_store.session_key, session_store.get_expiry_age())
+        return response
 
     @action(detail=False, methods=["post"])
     def logout(self, request):
@@ -72,7 +78,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if request.session.get('user'):
             return Response({"user": request.session.get('user'), "email": request.session.get('email')})
         
-        return Response({"message": "session not found"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": "session not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -98,15 +104,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"])
     def mark_product(self, request):
         marked_products = request.session.get('marked_products', [])
-        marker = request.data.get('marker', 'off')
         product = request.data.get('product', None)
-        print(marker, product)
-        if product is not None:
-            if product in marked_products and marker == 'off':
-                marked_products.remove(product)
-            elif marker == 'on':
-                marked_products.append(product)
-        
+        marked_products.remove(product) if product and product in marked_products else marked_products.append(product)
         request.session['marked_products'] = marked_products
         request.session.save()
         return Response({"message": "marked products updated"})
@@ -115,8 +114,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     def generate_data(self, request):
         products = generate_random_products()
         products_created = Product.objects.bulk_create(
-		    [Product(**product) for product in products], batch_size=100
-	    )
+            [Product(**product) for product in products], batch_size=100
+        )
         return Response({"message": "data successfully genrated"})
 
 
